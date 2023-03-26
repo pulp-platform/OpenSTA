@@ -264,9 +264,13 @@ public:
 
   virtual void beginWireload(LibertyGroup *group);
   virtual void endWireload(LibertyGroup *group);
+  virtual void beginWireloadTable(LibertyGroup *group);
+  virtual void endWireloadTable(LibertyGroup *group);
   virtual void visitResistance(LibertyAttr *attr);
   virtual void visitSlope(LibertyAttr *attr);
   virtual void visitFanoutLength(LibertyAttr *attr);
+  virtual void visitFanoutCapacitance(LibertyAttr *attr);
+  virtual void visitFanoutResistance(LibertyAttr *attr);
 
   virtual void beginWireloadSelection(LibertyGroup *group);
   virtual void endWireloadSelection(LibertyGroup *group);

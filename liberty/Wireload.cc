@@ -24,27 +24,24 @@
 namespace sta {
 
 Wireload::Wireload(const char *name,
-		   LibertyLibrary *library) :
+		   LibertyLibrary *library,
+       bool is_wireload_table) :
   name_(stringCopy(name)),
   library_(library),
+  is_wireload_table_(is_wireload_table),
   area_(0.0F),
-  resistance_(0.0F),
-  capacitance_(0.0F),
-  slope_(0.0F)
+  slope_(is_wireload_table ? 1.0F : 0.0F)
 {
 }
 
 Wireload::Wireload(const char *name,
 		   LibertyLibrary *library,
 		   float area,
-		   float resistance,
-		   float capacitance,
 		   float slope) :
   name_(stringCopy(name)),
   library_(library),
+  is_wireload_table_(false),
   area_(area),
-  resistance_(resistance),
-  capacitance_(capacitance),
   slope_(slope)
 {
 }
@@ -52,6 +49,8 @@ Wireload::Wireload(const char *name,
 Wireload::~Wireload()
 {
   fanout_lengths_.deleteContents();
+  fanout_capacitances_.deleteContents();
+  fanout_resistances_.deleteContents();
   stringDelete(name_);
 }
 
@@ -62,42 +61,101 @@ Wireload::setArea(float area)
 }
 
 void
-Wireload::setResistance(float res)
-{
-  resistance_ = res;
-}
-
-void
-Wireload::setCapacitance(float cap)
-{
-  capacitance_ = cap;
-}
-
-void
 Wireload::setSlope(float slope)
 {
-  slope_ = slope;
+  if (!is_wireload_table_)
+    slope_ = slope;
 }
 
 struct FanoutLess
 {
-  bool operator()(FanoutLength *fanout1,
-		  FanoutLength *fanout2) const
+  bool operator()(FanoutValue *fanout1,
+		  FanoutValue *fanout2) const
   {
     return fanout1->first < fanout2->first;
   }
 };
 
+void Wireload::addFanoutValue(float fanout,
+        float value, FanoutValueSeq& fanout_values)
+{
+  FanoutValue *fanout_value = new FanoutValue(fanout, value);
+  fanout_values.push_back(fanout_value);
+  // Keep fanouts sorted for lookup.
+  if (fanout_values.size() > 1
+      && fanout < (fanout_values[fanout_values.size() - 2])->first)
+    sort(fanout_values, FanoutLess());
+}
+
 void
 Wireload::addFanoutLength(float fanout,
 			  float length)
 {
-  FanoutLength *fanout_length = new FanoutLength(fanout, length);
-  fanout_lengths_.push_back(fanout_length);
-  // Keep fanouts sorted for lookup.
-  if (fanout_lengths_.size() > 1
-      && fanout < (fanout_lengths_[fanout_lengths_.size() - 2])->first)
-    sort(fanout_lengths_, FanoutLess());
+  addFanoutValue(fanout, length, fanout_lengths_);
+}
+
+void
+Wireload::addFanoutCapacitance(float fanout,
+			  float capacitance)
+{
+  // Only allow adding more than one capacitance with wire_load_table
+  if (!(!is_wireload_table_ && fanout_capacitances_.size() > 0))
+    addFanoutValue(fanout, capacitance, fanout_capacitances_);
+}
+
+void
+Wireload::addFanoutResistance(float fanout,
+			  float resistance)
+{
+  // Only allow adding more than one resistance with wire_load_table
+  if (!(!is_wireload_table_ && fanout_capacitances_.size() > 0))
+    addFanoutValue(fanout, resistance, fanout_resistances_);
+}
+
+float
+Wireload::extractFanoutValue(float fanout,
+        const FanoutValueSeq& fanout_values) const
+{
+  size_t size = fanout_values.size();
+  float value;
+  if (size == 0)
+    value = 0;
+  else {
+    size_t max = size - 1;
+    float fanout0 = fanout_values[0]->first;
+    float fanout_max = fanout_values[max]->first;
+    if (fanout < fanout0) {
+      // Extrapolate from lowest fanout entry.
+      value = fanout_values[0]->second - (fanout0 - fanout) * slope_;
+      if (value < 0)
+	      value = 0;
+    }
+    else if (fanout == fanout0)
+      value = fanout_values[0]->second;
+    else if (fanout >= fanout_max)
+      // Extrapolate from max fanout entry.
+      value = fanout_values[max]->second + (fanout - fanout_max) * slope_;
+    else {
+      // Bisection search.
+      int lower = -1;
+      int upper = size;
+      while (upper - lower > 1) {
+        int mid = (upper + lower) >> 1;
+        if (fanout >= fanout_values[mid]->first)
+          lower = mid;
+        else
+          upper = mid;
+      }
+      // Interpolate between lower and lower+1 entries.
+      float fanout1 = fanout_values[lower]->first;
+      float fanout2 = fanout_values[lower+1]->first;
+      float l1 = fanout_values[lower]->second;
+      float l2 = fanout_values[lower+1]->second;
+      value = l1 + (l2 - l1) * (fanout - fanout1) / (fanout2 - fanout1);
+    }
+  }
+ 
+  return value;
 }
 
 void
@@ -106,49 +164,24 @@ Wireload::findWireload(float fanout,
 		       float &cap,
 		       float &res) const
 {
-  size_t size = fanout_lengths_.size();
-  float length;
-  if (size == 0)
-    length = 0;
-  else {
-    size_t max = size - 1;
-    float fanout0 = fanout_lengths_[0]->first;
-    float fanout_max = fanout_lengths_[max]->first;
-    if (fanout < fanout0) {
-      // Extrapolate from lowest fanout entry.
-      length = fanout_lengths_[0]->second - (fanout0 - fanout) * slope_;
-      if (length < 0)
-	length = 0;
-    }
-    else if (fanout == fanout0)
-      length = fanout_lengths_[0]->second;
-    else if (fanout >= fanout_max)
-      // Extrapolate from max fanout entry.
-      length = fanout_lengths_[max]->second + (fanout - fanout_max) * slope_;
-    else {
-      // Bisection search.
-      int lower = -1;
-      int upper = size;
-      while (upper - lower > 1) {
-	int mid = (upper + lower) >> 1;
-	if (fanout >= fanout_lengths_[mid]->first)
-	  lower = mid;
-	else
-	  upper = mid;
-      }
-      // Interpolate between lower and lower+1 entries.
-      float fanout1 = fanout_lengths_[lower]->first;
-      float fanout2 = fanout_lengths_[lower+1]->first;
-      float l1 = fanout_lengths_[lower]->second;
-      float l2 = fanout_lengths_[lower+1]->second;
-      length = l1 + (l2 - l1) * (fanout - fanout1) / (fanout2 - fanout1);
-    }
+  cap = 0;
+  res = 0;
+
+  if (is_wireload_table_) {
+    // wire_load_table defines absolute values.
+    cap = extractFanoutValue(fanout, fanout_capacitances_);
+    res = extractFanoutValue(fanout, fanout_resistances_);
   }
-  // Scale resistance and capacitance.
-  cap = length * capacitance_
-    * library_->scaleFactor(ScaleFactorType::wire_cap, op_cond);
-  res = length * resistance_
-    * library_->scaleFactor(ScaleFactorType::wire_res, op_cond);
+  else {
+    // wire_load scales values linearly with length.
+    float length = extractFanoutValue(fanout, fanout_lengths_);
+    cap = length * fanout_capacitances_[0]->second;
+    res = length * fanout_resistances_[0]->second;
+  }
+
+  // Scale resistance and capacitance with operating conditions.
+  cap *= library_->scaleFactor(ScaleFactorType::wire_cap, op_cond);
+  res *= library_->scaleFactor(ScaleFactorType::wire_res, op_cond);
 }
 
 ////////////////////////////////////////////////////////////////

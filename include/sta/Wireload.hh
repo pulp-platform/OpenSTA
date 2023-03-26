@@ -23,8 +23,8 @@ namespace sta {
 
 class WireloadForArea;
 
-typedef std::pair<float,float> FanoutLength;
-typedef Vector<FanoutLength*> FanoutLengthSeq;
+typedef std::pair<float,float> FanoutValue;
+typedef Vector<FanoutValue*> FanoutValueSeq;
 typedef Vector<WireloadForArea*> WireloadForAreaSeq;
 
 const char *
@@ -41,36 +41,41 @@ class Wireload
 {
 public:
   Wireload(const char *name,
-	   LibertyLibrary *library);
+	   LibertyLibrary *library,
+     bool is_wireload_table);
   Wireload(const char *name,
 	   LibertyLibrary *library,
 	   float area,
-	   float resistance,
-	   float capacitance,
 	   float slope);
   virtual ~Wireload();
   const char *name() const { return name_; }
   void setArea(float area);
-  void setResistance(float res);
-  void setCapacitance(float cap);
   void setSlope(float slope);
   void addFanoutLength(float fanout,
 		       float length);
+  void addFanoutCapacitance(float fanout,
+		       float capacitance);
+  void addFanoutResistance(float fanout,
+		       float resistance);
   // Find wireload resistance/capacitance for fanout.
   virtual void findWireload(float fanout,
 			    const OperatingConditions *op_cond,
 			    float &cap,
 			    float &res) const;
+private:
+  void addFanoutValue(float fanout, float value, FanoutValueSeq& fanout_values);
+  float extractFanoutValue(float fanout, const FanoutValueSeq& fanout_values) const;
 
 protected:
   const char *name_;
   LibertyLibrary *library_;
+  bool is_wireload_table_;
   float area_;
-  float resistance_;
-  float capacitance_;
   // Fanout length extrapolation slope.
   float slope_;
-  FanoutLengthSeq fanout_lengths_;
+  FanoutValueSeq fanout_lengths_;
+  FanoutValueSeq fanout_capacitances_;
+  FanoutValueSeq fanout_resistances_;
 };
 
 class WireloadSelection
