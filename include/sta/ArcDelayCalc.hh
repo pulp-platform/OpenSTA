@@ -17,6 +17,7 @@
 #pragma once
 
 #include <string>
+
 #include "MinMax.hh"
 #include "LibertyClass.hh"
 #include "NetworkClass.hh"
@@ -36,10 +37,11 @@ class DcalcAnalysisPt;
 //   UnitDelayCalc
 //   LumpedCapDelayCalc
 //    RCDelayCalc
-//     SimpleRCDelayCalc
+//     SlewDegradeDelayCalc
 //     DmpCeffDelayCalc
 //      DmpCeffElmoreDelayCalc
 //      DmpCeffTwoPoleDelayCalc
+//     ArnoldiDelayCalc
 
 // Abstract class to interface to a delay calculator primitive.
 class ArcDelayCalc : public StaState
